@@ -4,11 +4,11 @@
 
 ZBD Template is an easy to use Unity Package for Android Mobile Games, however many features of the code base can be used in other platforms.
 
-It comes with an out of the box prefab you can drag and drop into your game which adds a bitcoin reward functionaility with minimal set up.
+It comes with an out of the box prefab you can drag and drop into your game which adds a bitcoin reward mechanic with minimal set up.
 
 Out of the box it allows a user to earn bitcoin based on how long they have played the game i.e. 10 sats every 10 minutes
 
-However it is full customizable allowing the developer to change and add code to suit their specific usecase
+However it is fully customizable allowing the developer to change and add code to suit their specific usecase
 
 ## How does it work?
 
