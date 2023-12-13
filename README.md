@@ -22,3 +22,4 @@ ZBD Template leveages a few different services
 ## How do I get started?
 
 Please watch the full video tutorial here https://www.youtube.com/watch?v=59ucumRqFxA
+Then download the lastest UnityPackage from the [Releases](https://github.com/zebedeeio/zbd-template/releases) section
