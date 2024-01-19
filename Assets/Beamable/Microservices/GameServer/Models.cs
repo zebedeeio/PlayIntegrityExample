@@ -1,23 +1,6 @@
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
-public class AppUsageStats
-{
-
-    public string packageName { get; set; }
-    public long firstTimeStamp { get; set; }
-    public long lastTimeStamp { get; set; }
-    public long totalTimeInForeground { get; set; }
-
-}
-public class GameData
-{
-    public string userId;
-    public AppUsageStats appUsageStats { get; set; }
-    public int touchCounts { get; set; }
-    public int accelerometerCount { get; set; }
-
-}
 
 public class RewardsResponse
 {
@@ -61,23 +44,6 @@ public class SendToUsernamePayload
 
 }
 
-
-
-public class TokenPayloadExternal
-{
-    [JsonProperty("requestDetails")]
-    public RequestDetails RequestDetails { get; set; }
-
-    [JsonProperty("appIntegrity")]
-    public AppIntegrity AppIntegrity { get; set; }
-
-    [JsonProperty("deviceIntegrity")]
-    public DeviceIntegrity DeviceIntegrity { get; set; }
-
-    [JsonProperty("accountDetails")]
-    public AccountDetails AccountDetails { get; set; }
-}
-
 public class RequestDetails
 {
     [JsonProperty("requestPackageName")]
@@ -88,39 +54,6 @@ public class RequestDetails
 
     [JsonProperty("requestHash")]
     public string RequestHash { get; set; }
-}
-
-public class AppIntegrity
-{
-    [JsonProperty("appRecognitionVerdict")]
-    public string AppRecognitionVerdict { get; set; }
-
-    [JsonProperty("packageName")]
-    public string PackageName { get; set; }
-
-    [JsonProperty("certificateSha256Digest")]
-    public List<string> CertificateSha256Digest { get; set; }
-
-    [JsonProperty("versionCode")]
-    public string VersionCode { get; set; }
-}
-
-public class DeviceIntegrity
-{
-    [JsonProperty("deviceRecognitionVerdict")]
-    public List<string> DeviceRecognitionVerdict { get; set; }
-}
-
-public class AccountDetails
-{
-    [JsonProperty("appLicensingVerdict")]
-    public string AppLicensingVerdict { get; set; }
-}
-
-public class RootObject
-{
-    [JsonProperty("tokenPayloadExternal")]
-    public TokenPayloadExternal TokenPayloadExternal { get; set; }
 }
 
 public class QuagoAccessTokenResponse

@@ -42,26 +42,14 @@ namespace Beamable.Server.Clients
         }
         
         /// <summary>
-        /// Call the ShouldVerify method on the GameServer microservice
-        /// <see cref="Beamable.Microservices.GameServer.ShouldVerify"/>
-        /// </summary>
-        public Beamable.Common.Promise<bool> ShouldVerify()
-        {
-            System.Collections.Generic.Dictionary<string, object> serializedFields = new System.Collections.Generic.Dictionary<string, object>();
-            return this.Request<bool>("GameServer", "ShouldVerify", serializedFields);
-        }
-        
-        /// <summary>
         /// Call the SendPlaytime method on the GameServer microservice
         /// <see cref="Beamable.Microservices.GameServer.SendPlaytime"/>
         /// </summary>
-        public Beamable.Common.Promise<string> SendPlaytime(string integrityToken, string payload)
+        public Beamable.Common.Promise<string> SendPlaytime(string userId)
         {
-            object raw_integrityToken = integrityToken;
-            object raw_payload = payload;
+            object raw_userId = userId;
             System.Collections.Generic.Dictionary<string, object> serializedFields = new System.Collections.Generic.Dictionary<string, object>();
-            serializedFields.Add("integrityToken", raw_integrityToken);
-            serializedFields.Add("payload", raw_payload);
+            serializedFields.Add("userId", raw_userId);
             return this.Request<string>("GameServer", "SendPlaytime", serializedFields);
         }
         
@@ -69,13 +57,11 @@ namespace Beamable.Server.Clients
         /// Call the WithdrawBitcoin method on the GameServer microservice
         /// <see cref="Beamable.Microservices.GameServer.WithdrawBitcoin"/>
         /// </summary>
-        public Beamable.Common.Promise<string> WithdrawBitcoin(string username, string integrityToken)
+        public Beamable.Common.Promise<string> WithdrawBitcoin(string username)
         {
             object raw_username = username;
-            object raw_integrityToken = integrityToken;
             System.Collections.Generic.Dictionary<string, object> serializedFields = new System.Collections.Generic.Dictionary<string, object>();
             serializedFields.Add("username", raw_username);
-            serializedFields.Add("integrityToken", raw_integrityToken);
             return this.Request<string>("GameServer", "WithdrawBitcoin", serializedFields);
         }
     }

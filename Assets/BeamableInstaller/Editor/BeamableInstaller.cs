@@ -26,6 +26,7 @@ namespace Beamable.Installer.Editor
         private const string BeamableTitle = "Beamable";
         private const string SessionStateKey_FrozenAssets = "Beamable_Installer_FrozeAssets";
         private const string BeamVersionsCacheKey = "Beamable_versions_registryAll";
+        private const string BeamVersionsLatestDevBuildKey = "Beamable_versions_latestDevBuildKey";
 
         private const string BeamableRegistryUrl_UnityAll =
             "https://nexus.beamable.com/nexus/content/repositories/unity-all";
@@ -61,6 +62,8 @@ namespace Beamable.Installer.Editor
                 return value.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
             }
         }
+
+        public static string LatestDevVersion => SessionState.GetString(BeamVersionsLatestDevBuildKey, string.Empty);
 
         static BeamableInstaller()
         {
@@ -118,7 +121,8 @@ namespace Beamable.Installer.Editor
 
         public static void InstallDev()
         {
-            InstallRegistryAndPackage(BeamableRegistryDict_UnityDev);
+            string version = string.IsNullOrWhiteSpace(LatestDevVersion) ? null : LatestDevVersion;
+            InstallRegistryAndPackage(BeamableRegistryDict_UnityDev, version);
         }
 
         public static void InstallRC()
@@ -383,13 +387,34 @@ namespace Beamable.Installer.Editor
                 {
                     var manifest = Json.Deserialize(webRequest.downloadHandler.text) as ArrayDict;
                     manifest.TryGetValue(BeamableScope, out var packageScope);
-                    if (!(packageScope is ArrayDict scope)) return;
+                    if (!(packageScope is ArrayDict scope)) continue;
                     scope.TryGetValue("versions", out var versions);
-                    if (!(versions is ArrayDict dict)) return;
+                    if (!(versions is ArrayDict dict)) continue;
                     versionsAll.AddRange(dict.Keys);
+
+                    if(!webRequest.url.Contains(BeamableRegistryUrl_UnityDev)) continue;
+                    FindLatestDevBuild(scope);
+
                 }
                 var dictResult = string.Join(",",versionsAll);
                 SessionState.SetString(BeamVersionsCacheKey,dictResult);
+            }
+
+            void FindLatestDevBuild(ArrayDict scope)
+            {
+                if (scope.TryGetValue("time", out var time))
+                {
+                    if (!(time is ArrayDict d)) return;
+                    if(!d.TryGetValue("modified", out var modifiedKey)) return;
+                    if (modifiedKey is string k)
+                    {
+                        var latestDevBuild = d.FirstOrDefault(pair => ((string)pair.Value == k) && !pair.Key.Equals("modified"));
+                        if (latestDevBuild.Key != null)
+                        {
+                            SessionState.SetString(BeamVersionsLatestDevBuildKey, latestDevBuild.Key);
+                        }
+                    }
+                }
             }
         }
 

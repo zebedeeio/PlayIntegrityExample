@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using Beamable;
 using Beamable.Server.Clients;
-using Google.Play.Integrity;
 using UnityEngine;
 using System.Security.Cryptography;
 using System.Text;
@@ -21,14 +20,13 @@ namespace ZBD
         public bool debug;
         public Text satsLabel;
         public Text satsConvertedLabel;
-        public long cloudProjectNumber;
         public TMP_Text countdownLabel;
         public TMP_Text responseLabel;
         public TMP_Text debugModeLabel;
         int checkTime = 60;
         private float currentTime;
         public String appToken;
-        string deviceId;
+        string userId;
         public RewardsResponse currentStats;
 
         public GameObject infoPanel;
@@ -36,7 +34,6 @@ namespace ZBD
         public GameObject errorPanel;
         public Text errorPanelText;
 
-        public GameObject appUsagePanel;
         public GameObject withdrawPanel;
         public Text withdrawPanelSats;
 
@@ -75,26 +72,9 @@ namespace ZBD
         void Start()
         {
 
-
-            if (cloudProjectNumber == 0)
-            {
-                Debug.LogError("please set the google cloud project number in the inspector");
-                return;
-            }
-
-
             StartQuago();
 
             countdownLabel.text = "";
-
-
-            if (!Utils.Instance.HasUsageStatsPermissionPage())
-            {
-
-                appUsagePanel.SetActive(true);
-
-            }
-
 
             Invoke("CheckTimePlayed", 5);
 
@@ -118,8 +98,8 @@ namespace ZBD
             }
             Quago.initialize(QuagoSettings.create(appToken, QuagoSettings.QuagoFlavor.PRODUCTION).setLogLevel(QuagoSettings.LogLevel.INFO)
 );
-            deviceId = SystemInfo.deviceUniqueIdentifier;
-            Quago.beginTracking(deviceId);
+            userId = Utils.Instance.ComputeSha256Hash(SystemInfo.deviceUniqueIdentifier);
+            Quago.beginTracking(userId);
         }
         public async void GetBeamableGamerTag()
         {
@@ -144,18 +124,7 @@ namespace ZBD
             CheckTimePlayed();
         }
 
-        public void RequestAppUsage()
-        {
-            if (!Utils.Instance.HasUsageStatsPermissionPage())
-            {
 
-                Utils.Instance.OpenUsageStatsPermissionPage();
-            }
-            else
-            {
-                appUsagePanel.SetActive(false);
-            }
-        }
         public void ShowEarnings()
         {
             if (currentStats != null && currentStats.blacklisted)
@@ -164,22 +133,14 @@ namespace ZBD
                 return;
             }
 
-            if (!Utils.Instance.HasUsageStatsPermissionPage())
-            {
-                appUsagePanel.SetActive(true);
 
+            withdrawPanel.SetActive(true);
 
-            }
-            else
-            {
-                withdrawPanel.SetActive(true);
-            }
 
         }
 
         void ResetTimePlayed()
         {
-            Utils.Instance.ResetTouch();
             currentTime = checkTime;
             if (checkLoop != null)
             {
@@ -206,36 +167,10 @@ namespace ZBD
         void CheckTimePlayed()
         {
             countdownLabel.text = "updating...";
-
-            if (!Utils.Instance.HasUsageStatsPermissionPage())
-            {
-                countdownLabel.text = "please enabled app usage stats";
-                ResetTimePlayed();
-                return;
-            }
-
             try
             {
-                string usageStats = Utils.Instance.GetAndroidUsageStats();
 
-                List<AppUsageStats> statsList = JsonConvert.DeserializeObject<List<AppUsageStats>>(usageStats);
-
-                Vector2[] touchPointsArray = Utils.Instance.touchPoints.ToArray();
-                int touchCounts = touchPointsArray.Length;
-
-                GameData gameData = new GameData();
-                gameData.appUsageStats = statsList[statsList.Count - 1];
-
-                gameData.touchCounts = touchCounts;
-                gameData.accelerometerCount = Utils.Instance.accelerometerCount;
-                gameData.userId = deviceId;
-
-                string payload = JsonConvert.SerializeObject(gameData);
-                string payloadHash = Utils.Instance.ComputeSha256Hash(payload);
-
-
-                RequestPlayIntegrity(payload, payloadHash);
-
+                SendToGameServer(userId);
 
             }
             catch (Exception e)
@@ -245,50 +180,9 @@ namespace ZBD
                 ResetTimePlayed();
             }
 
-
         }
 
-        async void RequestPlayIntegrity(string payload, string payloadHash)
-        {
 
-            var ctx = BeamContext.Default;
-            await ctx.OnReady;
-            try
-            {
-                bool shouldVerify = await ctx.Microservices().GameServer().ShouldVerify();
-
-                if (shouldVerify)
-                {
-                    StartPlayIntegrity(payloadHash, playIntegrityRes =>
-                    {
-
-                        if (playIntegrityRes.success == false)
-                        {
-                            Debug.LogError(playIntegrityRes.message);
-                            responseLabel.text = playIntegrityRes.message;
-                            ResetTimePlayed();
-                        }
-                        else
-                        {
-                            SendToGameServer(playIntegrityRes.token, payload);
-                        }
-                    });
-                }
-                else
-                {
-                    SendToGameServer(null, payload);
-                }
-
-            }
-            catch (Exception e)
-            {
-
-                Debug.LogError(e.ToString());
-                responseLabel.text = e.ToString();
-            }
-
-
-        }
 
         void ResetStatsLabels()
         {
@@ -357,22 +251,9 @@ namespace ZBD
 
             try
             {
-                StartPlayIntegrity("", playIntegrityRes =>
-                {
 
-                    if (playIntegrityRes.success == false)
-                    {
-                        Debug.LogError(playIntegrityRes.message);
-                        responseLabel.text = playIntegrityRes.message;
-                        ResetTimePlayed();
-                    }
-                    else
-                    {
+                ContinueWithdraw(username);
 
-                        ContinueWithdraw(username, playIntegrityRes.token);
-                    }
-
-                });
             }
             catch (Exception e)
             {
@@ -384,12 +265,12 @@ namespace ZBD
 
         }
 
-        async void ContinueWithdraw(string username, string token)
+        async void ContinueWithdraw(string username)
         {
 
             var ctx = BeamContext.Default;
             await ctx.OnReady;
-            var result = await ctx.Microservices().GameServer().WithdrawBitcoin(username, token);
+            var result = await ctx.Microservices().GameServer().WithdrawBitcoin(username);
 
             SendToUsernameResponse res = JsonConvert.DeserializeObject<SendToUsernameResponse>(result);
 
@@ -412,13 +293,13 @@ namespace ZBD
         {
             return currentTime + "/" + requiredTime + " mins approx";
         }
-        async void SendToGameServer(string token, string payload)
+        async void SendToGameServer(string deviceIdd)
         {
             var ctx = BeamContext.Default;
             await ctx.OnReady;
             try
             {
-                var result = await ctx.Microservices().GameServer().SendPlaytime(token, payload);
+                var result = await ctx.Microservices().GameServer().SendPlaytime(userId);
 
                 currentStats = JsonConvert.DeserializeObject<RewardsResponse>(result);
                 Debug.Log("res " + result);
@@ -436,85 +317,6 @@ namespace ZBD
 
             }
         }
-
-        void StartPlayIntegrity(string payloadHash, Action<PlayIntegrityResponse> callback)
-        {
-            try
-            {
-
-                StartCoroutine(PrepareIntegrityTokenCoroutine(callback, payloadHash));
-
-            }
-            catch (Exception e)
-            {
-                PlayIntegrityResponse res = new PlayIntegrityResponse();
-                res.success = false;
-                res.message = "err " + e.ToString();
-                callback(res);
-            }
-        }
-
-
-
-
-        IEnumerator PrepareIntegrityTokenCoroutine(Action<PlayIntegrityResponse> callback, string payloadHash)
-        {
-
-            PlayIntegrityResponse res = new PlayIntegrityResponse();
-            var standardIntegrityManager = new StandardIntegrityManager();
-
-            var integrityTokenProviderOperation =
-              standardIntegrityManager.PrepareIntegrityToken(
-                new PrepareIntegrityTokenRequest(cloudProjectNumber));
-
-            yield return integrityTokenProviderOperation;
-
-            if (integrityTokenProviderOperation.Error != StandardIntegrityErrorCode.NoError)
-            {
-
-                res.success = false;
-                res.message = "StandardIntegrityAsyncOperation failed with error: " +
-                              integrityTokenProviderOperation.Error;
-
-                Debug.LogError(res.message);
-                callback(res);
-                yield return null;
-
-
-            }
-            else
-            {
-                var integrityTokenProvider = integrityTokenProviderOperation.GetResult();
-
-                String requestHash = payloadHash;
-                var integrityTokenOperation = integrityTokenProvider.Request(
-                  new StandardIntegrityTokenRequest(requestHash)
-                );
-
-
-                yield return integrityTokenOperation;
-
-                if (integrityTokenOperation.Error != StandardIntegrityErrorCode.NoError)
-                {
-                    res.message = "StandardIntegrityAsyncOperation failed with error: " +
-                            integrityTokenOperation.Error;
-                    Debug.LogError(res.message);
-                    callback(res);
-                    yield return null;
-
-                }
-                else
-                {
-                    var integrityToken = integrityTokenOperation.GetResult();
-                    res.success = true;
-                    res.token = integrityToken.Token;
-                    callback(res);
-
-                }
-            }
-
-        }
-
 
         IEnumerator CountdownRoutine()
         {

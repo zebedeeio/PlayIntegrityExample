@@ -11,13 +11,10 @@
   ],
   "name":"Beamable.Microservice.GameServer",
   "autoReferenced":false,
-  "precompiledReferences":[
-    "Newtonsoft.Json.dll",
-    "Google.Apis.Auth.dll",
-    "Google.Apis.Core.dll",
-    "Google.Apis.PlayIntegrity.v1.dll"
-  ],
   "includePlatforms":[
      "Editor"
+  ],
+  "precompiledReferences":[
+    "Newtonsoft.Json.dll"
   ]
 }

@@ -1,12 +1,9 @@
 using Beamable.Server;
 using Newtonsoft.Json;
-using Google.Apis.Auth;
 using System;
 using Beamable.Server.Api.RealmConfig;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using Google.Apis.Auth.OAuth2;
-using Google.Apis.PlayIntegrity;
 using System.Security.Cryptography;
 using System.IO;
 using System.Threading.Tasks;
@@ -25,7 +22,6 @@ namespace Beamable.Microservices
     {
         string satsKey = "currency.sats";
         string rewardedTimeKey = "currency.rewardedTime";
-        string lastPlayIntegrityCheckKey = "currency.lastPlayIntegrityCheck";
         string whitelistedId = "items.whitelisted";
         string validatedId = "items.validated";
         string blacklistedId = "items.blacklisted";
@@ -46,32 +42,12 @@ namespace Beamable.Microservices
             return JsonConvert.SerializeObject(rewardRes);
         }
 
-        // Google Play integrity doesnt like it if you call too often, so check if its time to call
-        [ClientCallable]
-        public async Task<bool> ShouldVerify()
-        {
-            DateTime currentTimeUtc = DateTime.UtcNow;
 
-            long currentTimeStampSeconds = (long)(currentTimeUtc.Subtract(new DateTime(1970, 1, 1))).TotalSeconds;
-
-            long lastPlayIntegrityCheck = await Services.Inventory.GetCurrency(lastPlayIntegrityCheckKey);
-
-            long timeSinceCheck = currentTimeStampSeconds - lastPlayIntegrityCheck;
-
-            /* If the time since the last check is greater than 30 mins check again
-             If lastPlayIntegrityCheck is 0 assume its the first check */
-            if (timeSinceCheck > 1800 || lastPlayIntegrityCheck == 0)
-            {
-                return true;
-            }
-
-            return false;
-        }
 
         [ClientCallable]
-        public async Task<string> SendPlaytime(string integrityToken, string payload)
+        public async Task<string> SendPlaytime(string userId)
         {
-            BeamableLogger.Log("payload " + payload);
+            BeamableLogger.Log("userId " + userId);
             RewardsResponse rewardRes = new RewardsResponse();
 
             try
@@ -102,15 +78,9 @@ namespace Beamable.Microservices
                 string quagoPassword = config.GetSetting("accounts", "quagoPassword", "");
                 string quagoClientId = config.GetSetting("accounts", "quagoClientId", "");
                 string quagoAppToken = config.GetSetting("accounts", "quagoAppToken", "");
-                string serviceJSON = config.GetSetting("accounts", "serviceJSON", "");
                 string zbdApiKey = config.GetSetting("accounts", "zbdApiKey", "");
 
 
-                if (serviceJSON == "")
-                {
-                    isMissingConfig = true;
-                    missingConfigs += "serviceJSON";
-                }
 
                 if (zbdApiKey == "")
                 {
@@ -147,120 +117,7 @@ namespace Beamable.Microservices
                     missingConfigs += "quagoAppToken ";
                 }
 
-                /* Get the game play data from the payload
-                 Here were are doing a very basic check to see if the player has touched the screen
-                 And if the device has moved i.e. is in human hands
-                 You can and should replace this with specific checks for your game
-                 */
-
-                GameData gameData = JsonConvert.DeserializeObject<GameData>(payload);
-
-                if (gameData.touchCounts == 0)
-                {
-                    rewardRes.error = true;
-                    rewardRes.message = "no touches detected";
-                    return JsonConvert.SerializeObject(rewardRes);
-                }
-
-                if (gameData.accelerometerCount == 0)
-                {
-
-                    rewardRes.error = true;
-                    rewardRes.message = "no movement detected";
-                    return JsonConvert.SerializeObject(rewardRes);
-                }
-
-
-                // Google play integrity can cause false positives so we can allow users who fail to bypass this check by assigning them the 'whitelisted' item
-                if (!isWhiteListed)
-                {
-                    // We can call play integrity too often so check if its time
-                    bool shouldVerify = await ShouldVerify();
-                    if (shouldVerify)
-                    {
-                        /* Check if the device and app are valid via Google Play Integrity */
-                        string res = await PlayIntegrityController.RunPlayIntegrity(serviceJSON, integrityToken);
-
-                        DateTime currentTimeUtc = DateTime.UtcNow;
-                        long currentTimeStampSeconds = (long)(currentTimeUtc.Subtract(new DateTime(1970, 1, 1))).TotalSeconds;
-                        await Services.Inventory.SetCurrency(lastPlayIntegrityCheckKey, currentTimeStampSeconds);
-                        BeamableLogger.Log("play integrity " + res);
-                        RootObject rootObject = JsonConvert.DeserializeObject<RootObject>(res);
-
-                        string payloadHash = ComputeSha256Hash(payload);
-                        string requestHash = rootObject.TokenPayloadExternal.RequestDetails.RequestHash;
-
-
-                        string deviceIntegrity = rootObject.TokenPayloadExternal.DeviceIntegrity.DeviceRecognitionVerdict[0];
-                        string appIntegrity = rootObject.TokenPayloadExternal.AppIntegrity.AppRecognitionVerdict;
-
-
-                        // The payload sent from the client to this microservice has been altered or is fake
-                        if (payloadHash != requestHash)
-                        {
-                            if (!isBlackListed)
-                            {
-                                await Services.Inventory.AddItem(blacklistedId);
-                            }
-                            rewardRes.blacklisted = true;
-                            rewardRes.error = true;
-                            rewardRes.message = "tampering detected";
-                            return JsonConvert.SerializeObject(rewardRes);
-                        }
-
-                        // The app is not genuine, possibly installed outside of google play or tampered with
-                        if (appIntegrity != "PLAY_RECOGNIZED")
-                        {
-                            if (!isBlackListed)
-                            {
-                                await Services.Inventory.AddItem(blacklistedId);
-                            }
-                            rewardRes.blacklisted = true;
-                            rewardRes.error = true;
-                            rewardRes.message = "failed app integrity";
-                            return JsonConvert.SerializeObject(rewardRes);
-                        }
-
-                        // The device has a high chance of being fake or is rooted
-                        if (!deviceIntegrity.Contains("MEETS_STRONG_INTEGRITY"))
-                        {
-                            if (!isBlackListed)
-                            {
-                                await Services.Inventory.AddItem(blacklistedId);
-                            }
-                            rewardRes.blacklisted = true;
-                            rewardRes.error = true;
-                            rewardRes.message = "failed device integrity";
-                            return JsonConvert.SerializeObject(rewardRes);
-                        }
-
-                        if (!isValidated)
-                        {
-                            await Services.Inventory.AddItem(validatedId);
-                        }
-                    }
-                }
-
-
-
-                /* Calculate the playtime from the Android App Usage Stats library */
-
-                AppUsageStats usageStats = gameData.appUsageStats;
-
-                // Convert the milliseconds into minutes
-                long totalPlaytimeMins = (usageStats.totalTimeInForeground / 1000) / 60;
-
-
-                // This can happen if the app was reinstalled, beamable remembers time played but app usage stats has not record anymore, so reset currentRewardTime to 0
-                if (totalPlaytimeMins < currentRewardedTime)
-                {
-                    currentRewardedTime = 0;
-                    await Services.Inventory.SetCurrency(rewardedTimeKey, currentRewardedTime);
-                }
-
-
-                /* If you are not using Quago anti cheat you should remove this section*/
-                PlayerInfo quagoData = await QuagoController.GetQuagoData(gameData.userId, quagoUsername, quagoPassword, quagoClientId, quagoAppToken);
+                PlayerInfo quagoData = await QuagoController.GetQuagoData(userId, quagoUsername, quagoPassword, quagoClientId, quagoAppToken);
 
                 // Quago could probably not find an entry for the user yet
                 if (quagoData.success == false)
@@ -302,8 +159,8 @@ namespace Beamable.Microservices
                 }
 
 
-
-
+                long totalPlaytimeMins = (long)Math.Floor((decimal)(quagoData.TotalMotionHours * 60f));
+                BeamableLogger.Log("total playtime mins " + totalPlaytimeMins);
                 // Calculate the current time played since the last reward, if it greater than `rewardTime` assign sats balance
 
                 long currentPlayTimeMins = totalPlaytimeMins - currentRewardedTime;
@@ -401,7 +258,7 @@ namespace Beamable.Microservices
         }
 
         [ClientCallable]
-        public async Task<string> WithdrawBitcoin(string username, string integrityToken)
+        public async Task<string> WithdrawBitcoin(string username)
         {
 
             long currentSats = await Services.Inventory.GetCurrency(satsKey);
@@ -437,36 +294,7 @@ namespace Beamable.Microservices
                 return JsonConvert.SerializeObject(res);
             }
 
-            bool isWhiteListed = await IsWhitelisted();
 
-
-            if (!isWhiteListed)
-            {
-
-                /* Check if the device and app are valid via Google Play Integrity */
-                string playIntegrityRes = await PlayIntegrityController.RunPlayIntegrity(serviceJSON, integrityToken);
-                BeamableLogger.Log("play integrity " + res);
-                RootObject rootObject = JsonConvert.DeserializeObject<RootObject>(playIntegrityRes);
-
-                string deviceIntegrity = rootObject.TokenPayloadExternal.DeviceIntegrity.DeviceRecognitionVerdict[0];
-                string appIntegrity = rootObject.TokenPayloadExternal.AppIntegrity.AppRecognitionVerdict;
-
-                // The app is not genuine, possibly installed outside of google play or tampered with
-                if (appIntegrity != "PLAY_RECOGNIZED")
-                {
-                    res.success = false;
-                    res.message = "failed app integrity";
-                    return JsonConvert.SerializeObject(res);
-                }
-
-                // The device has a high chance of being fake or is rooted
-                if (!deviceIntegrity.Contains("MEETS_STRONG_INTEGRITY"))
-                {
-                    res.success = false;
-                    res.message = "failed device integrity";
-                    return JsonConvert.SerializeObject(res);
-                }
-            }
 
 
             res = await ZBDAPIController.SendToUsername(username, (int)currentSats, "Withdrawal", apikey);
